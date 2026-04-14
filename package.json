@@ -1,6 +1,6 @@
 {
   "name": "@hmawla/termserver",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Share your terminal sessions with mobile devices over your local network",
   "type": "module",
   "license": "MIT",
