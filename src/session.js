@@ -1,4 +1,4 @@
-import * as pty from 'node-pty';
+import * as pty from '@homebridge/node-pty-prebuilt-multiarch';
 import { nanoid } from 'nanoid';
 import os from 'node:os';
 import fs from 'node:fs';
@@ -51,11 +51,10 @@ export async function checkPtyHealth() {
     const msg = err.message ?? '';
     if (msg.includes('posix_spawnp')) {
       return new Error(
-        'node-pty PTY spawn failed — the native binary may need to be rebuilt.\n\n' +
-        '  Run this command, then try again:\n\n' +
-        '    npm rebuild node-pty --prefix "$(npm root -g)/../.."\n\n' +
-        '  If that fails, install Xcode Command Line Tools first:\n' +
-        '    xcode-select --install\n'
+        'PTY spawn failed — try reinstalling the package to get a fresh binary:\n\n' +
+        '    npm install -g @hmawla/termserver\n\n' +
+        '  If the problem persists on macOS, ensure Terminal has the required\n' +
+        '  permissions in System Settings → Privacy & Security.\n'
       );
     }
     return new Error(`PTY health check failed: ${msg}`);
@@ -81,11 +80,11 @@ export async function runPtyDiagnostics() {
   // --- Locate the node-pty native .node file ---
   try {
     const req = createRequire(import.meta.url);
-    const pkgJson = req.resolve('node-pty/package.json');
+    const pkgJson = req.resolve('@homebridge/node-pty-prebuilt-multiarch/package.json');
     const ptyRoot = path.dirname(pkgJson);
     result.ptyRoot = ptyRoot;
     result.ptyNodeVersion = (() => {
-      try { return req('node-pty/package.json').version; } catch { return '?'; }
+      try { return req('@homebridge/node-pty-prebuilt-multiarch/package.json').version; } catch { return '?'; }
     })();
 
     // Walk the entire node-pty directory tree to find any .node file
@@ -235,8 +234,7 @@ export class Session {
       const ptyDevice = os.platform() !== 'win32' ? '/dev/ptmx' : null;
       const ptyAccessible = fs.existsSync(ptyDevice);
       const hint = err.message.includes('posix_spawnp')
-        ? '\n  Hint: try rebuilding the native PTY module:\n' +
-          '  npm rebuild node-pty --prefix "$(npm root -g)/../.."'
+        ? '\n  Hint: try reinstalling: npm install -g @hmawla/termserver'
         : '';
       throw new Error(
         `Failed to spawn PTY` +

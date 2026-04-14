@@ -276,10 +276,8 @@ program.action(async (opts) => {
       dline('pty.node found:', chalk.red('NONE — native binary is missing'));
       console.error('');
       console.error(chalk.red('  ✗ node-pty native module was not compiled during installation.'));
-      console.error(chalk.yellow('  → Fix: rebuild it for your current Node.js / architecture:'));
-      console.error(chalk.cyan('      npm rebuild node-pty --prefix "$(npm root -g)/../.."'));
-      console.error(chalk.yellow('  → Or reinstall from source:'));
-      console.error(chalk.cyan('      npm install -g @hmawla/termserver --build-from-source'));
+      console.error(chalk.yellow('  → Fix: reinstall the package:'));
+      console.error(chalk.cyan('      npm install -g @hmawla/termserver'));
       console.error('');
     }
 
