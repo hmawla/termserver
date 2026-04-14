@@ -3,6 +3,8 @@ import { nanoid } from 'nanoid';
 import os from 'node:os';
 import fs from 'node:fs';
 import { EventEmitter } from 'node:events';
+import { createRequire } from 'node:module';
+import path from 'node:path';
 
 /**
  * Returns the default shell for the current platform.
@@ -24,6 +26,76 @@ export function getDefaultShell() {
     if (shell && fs.existsSync(shell)) return shell;
   }
   return 'sh';
+}
+
+/**
+ * Runs PTY sub-system diagnostics and returns a structured result object.
+ * Used by --debug to surface actionable info before / after a spawn failure.
+ */
+export async function runPtyDiagnostics() {
+  const result = {};
+  const platform = os.platform();
+
+  // --- PTY device ---
+  const ptyDevice = platform !== 'win32' ? '/dev/ptmx' : null;
+  result.ptyDevice = ptyDevice;
+  try {
+    const fd = fs.openSync(ptyDevice, 'r+');
+    fs.closeSync(fd);
+    result.ptyDeviceAccessible = true;
+  } catch (e) {
+    result.ptyDeviceAccessible = false;
+    result.ptyDeviceError = e.message;
+  }
+
+  // --- Locate the node-pty native .node file ---
+  try {
+    const req = createRequire(import.meta.url);
+    const pkgJson = req.resolve('node-pty/package.json');
+    const ptyRoot = path.dirname(pkgJson);
+    const candidates = [
+      path.join(ptyRoot, 'build', 'Release', 'pty.node'),
+      path.join(ptyRoot, 'prebuilds', `${platform}-${os.arch()}`, 'node.napi.node'),
+      path.join(ptyRoot, 'prebuilds', `${platform}-x64`, 'node.napi.node'),
+    ];
+    result.ptyNodeFile = candidates.find(p => fs.existsSync(p)) ?? '(not found)';
+    result.ptyNodeVersion = (() => {
+      try { return req('node-pty/package.json').version; } catch { return '?'; }
+    })();
+  } catch (e) {
+    result.ptyNodeFile = `(resolve error: ${e.message})`;
+  }
+
+  // --- Minimal PTY spawn test (just /bin/echo) ---
+  try {
+    const proc = pty.spawn('/bin/echo', ['pty-test-ok'], {
+      name: 'xterm',
+      cols: 80,
+      rows: 24,
+      cwd: os.tmpdir(),
+      env: { TERM: 'xterm', PATH: process.env.PATH || '/usr/bin:/bin', HOME: os.homedir() },
+    });
+    await new Promise((resolve) => {
+      proc.onExit(() => resolve());
+      // Force-kill after 2s in case echo hangs for any reason
+      setTimeout(() => { try { proc.kill(); } catch {} resolve(); }, 2000);
+    });
+    result.testSpawn = 'OK';
+  } catch (e) {
+    result.testSpawn = `FAILED: ${e.message}`;
+  }
+
+  // --- env vars that can affect PTY behaviour ---
+  result.envTERM = process.env.TERM ?? '(unset)';
+  result.envLANG = process.env.LANG ?? '(unset)';
+  result.envDYLD = process.env.DYLD_LIBRARY_PATH ?? '(unset)';
+
+  // --- process identity ---
+  result.pid  = process.pid;
+  result.uid  = process.getuid?.() ?? 'n/a';
+  result.gid  = process.getgid?.() ?? 'n/a';
+
+  return result;
 }
 
 /**
@@ -102,19 +174,28 @@ export class Session {
 
     try {
       this.ptyProcess = pty.spawn(command, args, {
-        name: 'xterm-color',
+        name: 'xterm-256color',
         cols: this.cols,
         rows: this.rows,
         cwd,
-        env: process.env,
+        // Always ensure TERM is set; some macOS environments strip it which
+        // causes posix_spawnp to fail before the shell even starts.
+        env: { TERM: 'xterm-256color', ...process.env },
       });
     } catch (err) {
       const cmdExists = fs.existsSync(command);
       const cwdExists = fs.existsSync(cwd);
+      const ptyDevice = os.platform() !== 'win32' ? '/dev/ptmx' : null;
+      const ptyAccessible = fs.existsSync(ptyDevice);
+      const hint = err.message.includes('posix_spawnp')
+        ? '\n  Hint: try rebuilding the native PTY module:\n' +
+          '  npm rebuild node-pty --prefix "$(npm root -g)/../.."'
+        : '';
       throw new Error(
         `Failed to spawn PTY` +
         ` (shell: ${command} [exists: ${cmdExists}],` +
-        ` cwd: ${cwd} [exists: ${cwdExists}]): ${err.message}`
+        ` cwd: ${cwd} [exists: ${cwdExists}],` +
+        ` pty device: ${ptyDevice} [accessible: ${ptyAccessible}]): ${err.message}${hint}`
       );
     }
 

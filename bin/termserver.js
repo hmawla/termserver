@@ -3,11 +3,13 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import qrcode from 'qrcode-terminal';
 import { createRequire } from 'node:module';
+import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
 
 import { startDaemon, stopDaemon, isDaemonRunning } from '../src/daemon.js';
-import { getDefaultShell } from '../src/session.js';
+import { getDefaultShell, runPtyDiagnostics } from '../src/session.js';
 import { bridgeLocalTerminal, bridgeRemoteSession } from '../src/ptyBridge.js';
 import { getDevices, removeDevice } from '../src/store.js';
 import { getLanIp } from '../src/network.js';
@@ -211,12 +213,66 @@ program.action(async (opts) => {
     const shellEnv = process.env.SHELL || '(unset)';
     const shellEnvExists = process.env.SHELL ? fs.existsSync(process.env.SHELL) : false;
     const homedir = os.homedir();
-    console.error(chalk.gray('[debug] platform:     ') + `${os.platform()}/${os.arch()}`);
-    console.error(chalk.gray('[debug] node:         ') + process.version);
-    console.error(chalk.gray('[debug] $SHELL:        ') + `${shellEnv} (exists: ${shellEnvExists})`);
-    console.error(chalk.gray('[debug] selected shell:') + `${shell} (exists: ${fs.existsSync(shell)})`);
-    console.error(chalk.gray('[debug] homedir:      ') + `${homedir} (exists: ${fs.existsSync(homedir)})`);
-    console.error(chalk.gray('[debug] command:      ') + JSON.stringify([shell, '-c', commandStr]));
+    const ptyDevice = os.platform() !== 'win32' ? '/dev/ptmx' : null;
+    const dline = (label, value) =>
+      console.error(chalk.gray(`[debug] ${label}`.padEnd(28)) + value);
+
+    dline('platform:', `${os.platform()}/${os.arch()}`);
+    dline('node:', process.version);
+    dline('pid / uid / gid:', `${process.pid} / ${process.getuid?.() ?? 'n/a'} / ${process.getgid?.() ?? 'n/a'}`);
+
+    // macOS-specific: detect Rosetta and native module architecture
+    if (os.platform() === 'darwin') {
+      try {
+        const translated = execSync('sysctl -n sysctl.proc_translated 2>/dev/null || echo 0', { encoding: 'utf8' }).trim();
+        dline('rosetta:', translated === '1' ? chalk.yellow('YES — running under Rosetta!') : 'no');
+      } catch {}
+      try {
+        const archOut = execSync('arch 2>&1', { encoding: 'utf8' }).trim();
+        dline('arch cmd:', archOut);
+      } catch {}
+    }
+
+    dline('$TERM:', process.env.TERM ?? chalk.yellow('(unset — may cause spawn failure)'));
+    dline('$LANG:', process.env.LANG ?? '(unset)');
+    dline('$SHELL:', `${shellEnv} (exists: ${shellEnvExists})`);
+    dline('selected shell:', `${shell} (exists: ${fs.existsSync(shell)})`);
+    dline('homedir:', `${homedir} (exists: ${fs.existsSync(homedir)})`);
+    if (ptyDevice) dline('pty device:', `${ptyDevice} (exists: ${fs.existsSync(ptyDevice)})`);
+    dline('command:', JSON.stringify([shell, '-c', commandStr]));
+
+    // Try to open the PTY device directly — if this fails, no spawn will work
+    if (ptyDevice) {
+      try {
+        const fd = fs.openSync(ptyDevice, 'r+');
+        fs.closeSync(fd);
+        dline('ptmx open test:', chalk.green('OK'));
+      } catch (e) {
+        dline('ptmx open test:', chalk.red(`FAILED: ${e.message}`));
+      }
+    }
+
+    // Run the full diagnostics (test spawn + native module info)
+    console.error(chalk.gray('[debug] running pty diagnostics…'));
+    const diag = await runPtyDiagnostics();
+    dline('node-pty version:', diag.ptyNodeVersion ?? '?');
+    dline('pty.node path:', diag.ptyNodeFile);
+
+    // If we can, check architecture of the native module
+    if (os.platform() === 'darwin' && diag.ptyNodeFile && diag.ptyNodeFile !== '(not found)') {
+      try {
+        const lipoOut = execSync(`lipo -archs "${diag.ptyNodeFile}" 2>&1`, { encoding: 'utf8' }).trim();
+        dline('pty.node archs:', lipoOut.includes(os.arch()) ? chalk.green(lipoOut) : chalk.red(`${lipoOut} ← MISMATCH with ${os.arch()}!`));
+      } catch {}
+      try {
+        const fileOut = execSync(`file "${diag.ptyNodeFile}" 2>&1`, { encoding: 'utf8' }).trim().split('\n')[0];
+        dline('pty.node file:', fileOut.replace(diag.ptyNodeFile + ': ', ''));
+      } catch {}
+    }
+
+    dline('test pty spawn:', diag.testSpawn === 'OK' ? chalk.green('OK') : chalk.red(diag.testSpawn));
+    if (diag.ptyDeviceError) dline('pty device error:', chalk.red(diag.ptyDeviceError));
+    console.error('');
   }
 
   // If a daemon is already running in another process, attach to it via HTTP+WS
