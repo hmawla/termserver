@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import 'pairing_code_screen.dart';
+import 'qr_scanner_screen.dart';
 
 class AddDeviceScreen extends StatefulWidget {
   const AddDeviceScreen({super.key});
@@ -11,12 +12,14 @@ class AddDeviceScreen extends StatefulWidget {
 
 class _AddDeviceScreenState extends State<AddDeviceScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
   final _ipController = TextEditingController();
   final _portController = TextEditingController(text: '8787');
   bool _isLoading = false;
 
   @override
   void dispose() {
+    _nameController.dispose();
     _ipController.dispose();
     _portController.dispose();
     super.dispose();
@@ -45,6 +48,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
 
     setState(() => _isLoading = true);
 
+    final name = _nameController.text.trim();
     final ip = _ipController.text.trim();
     final port = int.parse(_portController.text.trim());
 
@@ -63,6 +67,7 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
             ip: ip,
             port: port,
             sessionToken: sessionToken,
+            name: name.isEmpty ? 'Device $ip' : name,
           ),
         ),
       );
@@ -87,6 +92,15 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              TextFormField(
+                controller: _nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Name (optional)',
+                  hintText: 'e.g. Home Server',
+                ),
+                textCapitalization: TextCapitalization.words,
+              ),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _ipController,
                 decoration: const InputDecoration(
@@ -116,6 +130,26 @@ class _AddDeviceScreenState extends State<AddDeviceScreen> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Text('Connect'),
+              ),
+              const SizedBox(height: 16),
+              const Row(
+                children: [
+                  Expanded(child: Divider()),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12),
+                    child: Text('or', style: TextStyle(color: Colors.grey)),
+                  ),
+                  Expanded(child: Divider()),
+                ],
+              ),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.qr_code_scanner),
+                label: const Text('Scan QR Code'),
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const QrScannerScreen()),
+                ),
               ),
             ],
           ),

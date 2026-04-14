@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:xterm/xterm.dart';
 import '../models/paired_device.dart';
 import '../providers/terminal_provider.dart';
+import '../widgets/terminal_keyboard.dart';
 
 class SessionScreen extends StatefulWidget {
   final PairedDevice device;
@@ -24,6 +25,7 @@ class _SessionScreenState extends State<SessionScreen> {
   int? _lastCols;
   int? _lastRows;
   bool _sessionClosedHandled = false;
+  bool _showKeyboard = false;
 
   @override
   void initState() {
@@ -34,7 +36,9 @@ class _SessionScreenState extends State<SessionScreen> {
   }
 
   void _onProviderChanged() {
-    if (!_terminalProvider.isConnected && !_sessionClosedHandled && mounted) {
+    // Only pop when the SERVER explicitly closes the session.
+    // Don't react to transient WS disconnects (which trigger reconnect).
+    if (_terminalProvider.sessionClosed && !_sessionClosedHandled && mounted) {
       _sessionClosedHandled = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -121,7 +125,16 @@ class _SessionScreenState extends State<SessionScreen> {
           return Scaffold(
             appBar: AppBar(
               title: Text('Session ${widget.sessionId}'),
-              actions: [_buildControlButton(provider)],
+              actions: [
+                IconButton(
+                  icon: Icon(
+                    _showKeyboard ? Icons.keyboard_hide : Icons.keyboard,
+                  ),
+                  tooltip: _showKeyboard ? 'Hide keyboard' : 'Special keys',
+                  onPressed: () => setState(() => _showKeyboard = !_showKeyboard),
+                ),
+                _buildControlButton(provider),
+              ],
             ),
             body: Column(
               children: [
@@ -138,6 +151,10 @@ class _SessionScreenState extends State<SessionScreen> {
                           },
                         ),
                 ),
+                if (_showKeyboard)
+                  TerminalKeyboardBar(
+                    onKey: (seq) => provider.sendInput(seq),
+                  ),
                 _buildInputBar(provider),
               ],
             ),

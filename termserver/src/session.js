@@ -133,9 +133,18 @@ export class Session {
     }
   }
 
+  /** Display-friendly command string shown in the mobile app. */
+  get displayCmd() {
+    if (Array.isArray(this.args) && this.args[0] === '-c' && this.args[1]) {
+      return this.args[1];
+    }
+    return [this.command, ...this.args].join(' ').trim();
+  }
+
   toJSON() {
     return {
       id: this.id,
+      cmd: this.displayCmd,
       command: this.command,
       args: this.args,
       status: this.status,

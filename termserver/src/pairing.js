@@ -14,6 +14,8 @@ export class PairingManager {
   #pending = new Map();
   #cleanupInterval;
   #onPairingCallbacks = [];
+  #onInitiatedCallbacks = [];
+  #adminToken = null;
 
   constructor(store) {
     this.#store = store;
@@ -44,7 +46,30 @@ export class PairingManager {
       createdAt: Date.now(),
     });
 
+    // Notify any listeners (e.g. the CLI `pair` command) that a new pairing
+    // has been initiated so they can display the code to the user.
+    for (const cb of this.#onInitiatedCallbacks) {
+      try {
+        cb({ code, deviceName });
+      } catch {
+        // Don't let callback errors break the pairing flow
+      }
+    }
+
     return { code, sessionToken };
+  }
+
+  /** Register a callback invoked whenever a new pairing is initiated. */
+  onPairingInitiated(callback) {
+    this.#onInitiatedCallbacks.push(callback);
+  }
+
+  /**
+   * Set a privileged admin token for local CLI access.
+   * This token bypasses the paired-devices list and grants full access.
+   */
+  setAdminToken(token) {
+    this.#adminToken = token;
   }
 
   completePairing(code, sessionToken) {
@@ -88,6 +113,10 @@ export class PairingManager {
 
   validateToken(bearerToken) {
     if (!bearerToken) return null;
+    // Admin token (local CLI) takes priority
+    if (this.#adminToken && bearerToken === this.#adminToken) {
+      return { id: '__admin__', name: 'local-cli', isAdmin: true };
+    }
     const devices = this.#store.getDevices();
     return devices.find((d) => d.token === bearerToken) || null;
   }

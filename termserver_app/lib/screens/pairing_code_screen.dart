@@ -8,12 +8,14 @@ class PairingCodeScreen extends StatefulWidget {
   final String ip;
   final int port;
   final String sessionToken;
+  final String name;
 
   const PairingCodeScreen({
     super.key,
     required this.ip,
     required this.port,
     required this.sessionToken,
+    required this.name,
   });
 
   @override
@@ -79,7 +81,7 @@ class _PairingCodeScreenState extends State<PairingCodeScreen> {
 
       final device = PairedDevice(
         id: result['deviceId']!,
-        name: 'Device ${widget.ip}',
+        name: widget.name,
         ip: widget.ip,
         port: widget.port,
         deviceToken: result['deviceToken']!,
@@ -92,10 +94,13 @@ class _PairingCodeScreenState extends State<PairingCodeScreen> {
           .addDevice(device);
 
       if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
       Navigator.of(context).popUntil((route) => route.isFirst);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Device paired successfully')),
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Device paired successfully')),
+        );
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {

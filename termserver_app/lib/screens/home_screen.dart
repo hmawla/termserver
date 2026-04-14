@@ -38,6 +38,40 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+  Future<void> _renameDevice(
+    BuildContext context,
+    PairedDevice device,
+    DeviceProvider provider,
+  ) async {
+    final controller = TextEditingController(text: device.name);
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rename Device'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Name'),
+          textCapitalization: TextCapitalization.words,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+            child: const Text('Rename'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (newName != null && newName.isNotEmpty) {
+      await provider.renameDevice(device.id, newName);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -82,9 +116,45 @@ class HomeScreen extends StatelessWidget {
                   leading: const Icon(Icons.computer),
                   title: Text(device.name),
                   subtitle: Text('${device.ip}:${device.port}'),
-                  trailing: Text(
-                    _relativeTime(device.pairedAt),
-                    style: Theme.of(context).textTheme.bodySmall,
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _relativeTime(device.pairedAt),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      PopupMenuButton<String>(
+                        onSelected: (value) {
+                          if (value == 'rename') {
+                            _renameDevice(context, device, provider);
+                          } else if (value == 'remove') {
+                            _confirmDelete(context, device).then((confirmed) {
+                              if (confirmed == true) {
+                                provider.removeDevice(device.id);
+                              }
+                            });
+                          }
+                        },
+                        itemBuilder: (_) => [
+                          const PopupMenuItem(
+                            value: 'rename',
+                            child: ListTile(
+                              leading: Icon(Icons.edit),
+                              title: Text('Rename'),
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'remove',
+                            child: ListTile(
+                              leading: Icon(Icons.delete),
+                              title: Text('Remove'),
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                   onTap: () => Navigator.push(
                     context,

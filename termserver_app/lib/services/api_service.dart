@@ -39,6 +39,21 @@ class ApiService {
     };
   }
 
+  Future<void> unpairDevice(
+    String ip,
+    int port,
+    String token,
+    String deviceId,
+  ) async {
+    final uri = Uri.parse('http://$ip:$port/devices/$deviceId');
+    final response = await http
+        .delete(uri, headers: {'Authorization': 'Bearer $token'})
+        .timeout(const Duration(seconds: 3));
+    if (response.statusCode != 200) {
+      throw Exception('Failed to unpair: ${response.statusCode}');
+    }
+  }
+
   Future<List<SessionInfo>> getSessions(String ip, int port, String token) async {
     final uri = Uri.parse('http://$ip:$port/sessions');
     final response = await http.get(

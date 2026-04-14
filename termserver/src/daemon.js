@@ -28,9 +28,9 @@ function readLockFile() {
   }
 }
 
-function writeLockFile(pid, port) {
+function writeLockFile(pid, port, adminToken) {
   fs.mkdirSync(LOCK_DIR, { recursive: true });
-  fs.writeFileSync(LOCK_FILE, JSON.stringify({ pid, port }));
+  fs.writeFileSync(LOCK_FILE, JSON.stringify({ pid, port, adminToken }));
 }
 
 function removeLockFile() {
@@ -59,7 +59,7 @@ export function isDaemonRunning() {
   if (!lock) return { running: false };
 
   if (isPidAlive(lock.pid)) {
-    return { running: true, port: lock.port, pid: lock.pid };
+    return { running: true, port: lock.port, pid: lock.pid, adminToken: lock.adminToken };
   }
 
   // Stale lock file — clean up
@@ -76,6 +76,11 @@ export async function startDaemon(options = {}) {
 
   const sessionRegistry = new SessionRegistry();
   const pairingManager = new PairingManager(store);
+
+  // Generate a per-run admin token so the local CLI can attach sessions
+  // to an already-running daemon without going through the mobile pairing flow.
+  const adminToken = nanoid(64);
+  pairingManager.setAdminToken(adminToken);
 
   const app = express();
   app.use(express.json());
@@ -117,6 +122,28 @@ export async function startDaemon(options = {}) {
     }
   });
 
+  // Device management (auth required)
+  app.get('/devices', auth, (req, res) => {
+    if (!req.device.isAdmin) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    res.json(store.getDevices());
+  });
+
+  app.delete('/devices/:id', auth, (req, res) => {
+    const { id } = req.params;
+    // A device may only revoke itself; admin may revoke any device.
+    if (req.device.id !== id && !req.device.isAdmin) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const devices = store.getDevices();
+    if (!devices.find((d) => d.id === id)) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+    store.removeDevice(id);
+    res.json({ success: true });
+  });
+
   // Session endpoints (auth required)
   app.get('/sessions', auth, (_req, res) => {
     res.json(sessionRegistry.list());
@@ -128,6 +155,23 @@ export async function startDaemon(options = {}) {
       return res.status(404).json({ error: 'Session not found' });
     }
     res.json(session.toJSON());
+  });
+
+  // Create a new PTY session (admin-only — used by local CLI when attaching to a running daemon)
+  app.post('/sessions', auth, (req, res) => {
+    if (!req.device.isAdmin) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    try {
+      const { command, args = [], cols = 80, rows = 24 } = req.body || {};
+      if (!command) {
+        return res.status(400).json({ error: 'command is required' });
+      }
+      const session = sessionRegistry.create(command, args, { cols, rows });
+      res.json({ sessionId: session.id });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // -----------------------------------------------------------------------
@@ -174,6 +218,14 @@ export async function startDaemon(options = {}) {
       ws.close(4004, 'Session not found');
       return;
     }
+
+    // Tell the client the current PTY dimensions so it can restore them on disconnect
+    ws.send(JSON.stringify({ type: 'session_info', cols: session.cols, rows: session.rows }));
+
+    // Remember dimensions before this client potentially resizes the PTY,
+    // so we can restore them when the client disconnects.
+    const preConnectCols = session.cols;
+    const preConnectRows = session.rows;
 
     // Send output history as initial burst
     for (const data of session.outputHistory.toArray()) {
@@ -248,6 +300,11 @@ export async function startDaemon(options = {}) {
       if (session.controllingClientId === clientId) {
         session.controllingClientId = null;
       }
+      // Restore the PTY to its pre-connection dimensions now that the mobile
+      // client has disconnected (avoids leaving the host terminal at phone size).
+      if (session.status === 'active') {
+        session.resize(preConnectCols, preConnectRows);
+      }
       sessionRegistry.off('session:output', onOutput);
       sessionRegistry.off('session:closed', onClosed);
     });
@@ -300,7 +357,7 @@ export async function startDaemon(options = {}) {
   });
 
   const address = getLanIp();
-  writeLockFile(process.pid, port);
+  writeLockFile(process.pid, port, adminToken);
 
   process.stderr.write(`termserver daemon listening on ${address}:${port}\n`);
 
@@ -310,13 +367,13 @@ export async function startDaemon(options = {}) {
   process.once('SIGTERM', cleanup);
   process.once('exit', cleanup);
 
-  return { server, app, sessionRegistry, pairingManager, port, address };
+  return { server, app, sessionRegistry, pairingManager, sessionWss, eventsWss, port, address };
 }
 
 export async function stopDaemon(components) {
-  const { server, pairingManager, sessionRegistry } = components;
+  const { server, pairingManager, sessionRegistry, sessionWss, eventsWss } = components;
 
-  // Kill all active sessions
+  // Kill all active PTY sessions
   if (sessionRegistry) {
     for (const s of sessionRegistry.sessions.values()) {
       s.kill();
@@ -328,6 +385,21 @@ export async function stopDaemon(components) {
   }
 
   if (server) {
+    // Terminate all open WebSocket connections — otherwise server.close() waits
+    // for them to finish on their own (keep-alive / open sessions = long hang).
+    for (const wss of [sessionWss, eventsWss]) {
+      if (wss) {
+        for (const ws of wss.clients) {
+          ws.terminate();
+        }
+      }
+    }
+
+    // Destroy lingering keep-alive HTTP connections (Node 18.2+).
+    if (typeof server.closeAllConnections === 'function') {
+      server.closeAllConnections();
+    }
+
     await new Promise((resolve) => server.close(resolve));
   }
 

@@ -20,6 +20,20 @@ class StorageService {
     await _secureStorage.write(key: 'token_${device.id}', value: device.deviceToken);
   }
 
+  Future<void> renameDevice(String id, String newName) async {
+    final device = _devicesBox.get(id);
+    if (device == null) return;
+    final updated = PairedDevice(
+      id: device.id,
+      name: newName,
+      ip: device.ip,
+      port: device.port,
+      deviceToken: device.deviceToken,
+      pairedAt: device.pairedAt,
+    );
+    await _devicesBox.put(id, updated);
+  }
+
   Future<void> removeDevice(String id) async {
     await _devicesBox.delete(id);
     await _secureStorage.delete(key: 'token_$id');

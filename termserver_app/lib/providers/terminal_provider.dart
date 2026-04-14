@@ -11,17 +11,24 @@ class TerminalProvider extends ChangeNotifier {
   WebSocketService? _wsService;
   ControlState _controlState = ControlState.none;
   bool _isConnected = false;
+  bool _sessionClosed = false;
   String? _sessionId;
+  int? _originalCols;
+  int? _originalRows;
   StreamSubscription? _messageSubscription;
   StreamSubscription? _statusSubscription;
 
   Terminal? get terminal => _terminal;
   ControlState get controlState => _controlState;
   bool get isConnected => _isConnected;
+  bool get sessionClosed => _sessionClosed;
   String? get sessionId => _sessionId;
+  int? get originalCols => _originalCols;
+  int? get originalRows => _originalRows;
 
   Future<void> connect(PairedDevice device, String sessionId) async {
     _sessionId = sessionId;
+    _sessionClosed = false;
     _terminal = Terminal(maxLines: 10000);
     _wsService = WebSocketService();
 
@@ -41,8 +48,13 @@ class TerminalProvider extends ChangeNotifier {
           _terminal?.write(data);
           break;
         case 'session_closed':
-          _isConnected = false;
+          _wsService?.disconnect();
+          _sessionClosed = true;
           notifyListeners();
+          break;
+        case 'session_info':
+          _originalCols = msg['cols'] as int?;
+          _originalRows = msg['rows'] as int?;
           break;
         case 'control_granted':
           _controlState = ControlState.active;
@@ -65,9 +77,6 @@ class TerminalProvider extends ChangeNotifier {
       device.deviceToken,
       sessionId,
     );
-
-    _isConnected = true;
-    notifyListeners();
   }
 
   void sendInput(String data) {
