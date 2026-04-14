@@ -99,14 +99,6 @@ class WebSocketService {
     _send({'type': 'resize', 'cols': cols, 'rows': rows});
   }
 
-  void requestControl() {
-    _send({'type': 'request_control'});
-  }
-
-  void releaseControl() {
-    _send({'type': 'release_control'});
-  }
-
   void _send(Map<String, dynamic> message) {
     _channel?.sink.add(jsonEncode(message));
   }

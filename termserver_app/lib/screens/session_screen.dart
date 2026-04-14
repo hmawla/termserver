@@ -59,50 +59,6 @@ class _SessionScreenState extends State<SessionScreen> {
     super.dispose();
   }
 
-  void _onControlToggle() {
-    switch (_terminalProvider.controlState) {
-      case ControlState.none:
-        _terminalProvider.requestControl();
-        break;
-      case ControlState.active:
-        _terminalProvider.releaseControl();
-        break;
-      case ControlState.requested:
-        break;
-    }
-  }
-
-  Widget _buildControlButton(TerminalProvider provider) {
-    final state = provider.controlState;
-    IconData icon;
-    String? tooltip;
-    VoidCallback? onPressed;
-
-    switch (state) {
-      case ControlState.none:
-        icon = Icons.pan_tool_outlined;
-        tooltip = 'Request Control';
-        onPressed = _onControlToggle;
-        break;
-      case ControlState.requested:
-        icon = Icons.hourglass_top;
-        tooltip = 'Waiting...';
-        onPressed = null;
-        break;
-      case ControlState.active:
-        icon = Icons.pan_tool;
-        tooltip = 'Release Control';
-        onPressed = _onControlToggle;
-        break;
-    }
-
-    return IconButton(
-      icon: Icon(icon),
-      tooltip: tooltip,
-      onPressed: onPressed,
-    );
-  }
-
   void _handleResize(double width, double height) {
     const charWidth = 9.0;
     const charHeight = 18.0;
@@ -133,7 +89,6 @@ class _SessionScreenState extends State<SessionScreen> {
                   tooltip: _showKeyboard ? 'Hide keyboard' : 'Special keys',
                   onPressed: () => setState(() => _showKeyboard = !_showKeyboard),
                 ),
-                _buildControlButton(provider),
               ],
             ),
             body: Column(
