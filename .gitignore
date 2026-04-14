@@ -1,6 +1,6 @@
 # Node
-termserver/node_modules/
-termserver/.conf/
+node_modules/
+.conf/
 
 # Flutter
 termserver_app/.dart_tool/
