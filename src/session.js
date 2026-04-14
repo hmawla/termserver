@@ -1,16 +1,29 @@
 import * as pty from 'node-pty';
 import { nanoid } from 'nanoid';
 import os from 'node:os';
+import fs from 'node:fs';
 import { EventEmitter } from 'node:events';
 
 /**
  * Returns the default shell for the current platform.
+ * Validates that the shell binary exists before returning it, falling back
+ * through known locations so a stale $SHELL (e.g. a Homebrew shell that was
+ * removed) does not cause posix_spawnp to fail at PTY creation time.
  */
 export function getDefaultShell() {
   if (os.platform() === 'win32') {
     return 'powershell.exe';
   }
-  return process.env.SHELL || 'bash';
+  const candidates = [
+    process.env.SHELL,
+    '/bin/zsh',
+    '/bin/bash',
+    '/bin/sh',
+  ];
+  for (const shell of candidates) {
+    if (shell && fs.existsSync(shell)) return shell;
+  }
+  return 'sh';
 }
 
 /**
@@ -80,15 +93,26 @@ export class Session {
     this._onOutput = null;
     this._onExit = null;
 
-    const cwd = opts.cwd ?? process.env.HOME ?? process.cwd();
+    // Resolve and validate the working directory so a missing path never
+    // causes an opaque posix_spawnp failure.
+    let cwd = opts.cwd ?? os.homedir();
+    if (!cwd || !fs.existsSync(cwd)) {
+      cwd = os.tmpdir();
+    }
 
-    this.ptyProcess = pty.spawn(command, args, {
-      name: 'xterm-color',
-      cols: this.cols,
-      rows: this.rows,
-      cwd,
-      env: process.env,
-    });
+    try {
+      this.ptyProcess = pty.spawn(command, args, {
+        name: 'xterm-color',
+        cols: this.cols,
+        rows: this.rows,
+        cwd,
+        env: process.env,
+      });
+    } catch (err) {
+      throw new Error(
+        `Failed to spawn PTY (shell: ${command}, cwd: ${cwd}): ${err.message}`
+      );
+    }
 
     this.ptyProcess.onData((data) => {
       this.outputHistory.push(data);
