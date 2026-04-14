@@ -3,6 +3,8 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import qrcode from 'qrcode-terminal';
 import { createRequire } from 'node:module';
+import fs from 'node:fs';
+import os from 'node:os';
 
 import { startDaemon, stopDaemon, isDaemonRunning } from '../src/daemon.js';
 import { getDefaultShell } from '../src/session.js';
@@ -17,7 +19,8 @@ const program = new Command();
 program
   .name('termserver')
   .description('Cross-platform terminal sharing daemon')
-  .version(version);
+  .version(version)
+  .option('-D, --debug', 'Show verbose debug output on errors');
 
 // ---------------------------------------------------------------------------
 // Helper: ensure daemon is running in-process
@@ -198,15 +201,32 @@ program.action(async (opts) => {
     return;
   }
 
+  const debug = !!opts.debug;
   const shell = getDefaultShell();
   const commandStr = opts.command;
   const cols = process.stdout.columns || 80;
   const rows = process.stdout.rows || 24;
 
+  if (debug) {
+    const shellEnv = process.env.SHELL || '(unset)';
+    const shellEnvExists = process.env.SHELL ? fs.existsSync(process.env.SHELL) : false;
+    const homedir = os.homedir();
+    console.error(chalk.gray('[debug] platform:     ') + `${os.platform()}/${os.arch()}`);
+    console.error(chalk.gray('[debug] node:         ') + process.version);
+    console.error(chalk.gray('[debug] $SHELL:        ') + `${shellEnv} (exists: ${shellEnvExists})`);
+    console.error(chalk.gray('[debug] selected shell:') + `${shell} (exists: ${fs.existsSync(shell)})`);
+    console.error(chalk.gray('[debug] homedir:      ') + `${homedir} (exists: ${fs.existsSync(homedir)})`);
+    console.error(chalk.gray('[debug] command:      ') + JSON.stringify([shell, '-c', commandStr]));
+  }
+
   // If a daemon is already running in another process, attach to it via HTTP+WS
   // instead of failing.
   const daemonStatus = isDaemonRunning();
   if (daemonStatus.running) {
+    if (debug) {
+      console.error(chalk.gray('[debug] daemon:       ') + `running on port ${daemonStatus.port} (pid ${daemonStatus.pid ?? '?'})`);
+    }
+
     if (!daemonStatus.adminToken) {
       console.error(
         chalk.red('✗') +
@@ -227,8 +247,20 @@ program.action(async (opts) => {
         body: JSON.stringify({ command: shell, args: ['-c', commandStr], cols, rows }),
       });
       if (!resp.ok) {
-        const text = await resp.text();
-        throw new Error(`HTTP ${resp.status}: ${text}`);
+        const body = await resp.json().catch(() => null);
+        const msg = body?.error ?? `HTTP ${resp.status}`;
+        if (debug && body) {
+          if (body.debug) {
+            console.error(chalk.gray('[debug] daemon env:'));
+            for (const [k, v] of Object.entries(body.debug)) {
+              console.error(chalk.gray(`          ${k}: `) + v);
+            }
+          }
+          if (body.stack) {
+            console.error(chalk.gray('[debug] stack:\n') + body.stack);
+          }
+        }
+        throw new Error(msg);
       }
       const data = await resp.json();
       sessionId = data.sessionId;
@@ -242,12 +274,23 @@ program.action(async (opts) => {
     return;
   }
 
+  if (debug) {
+    console.error(chalk.gray('[debug] daemon:       ') + 'not running — starting in-process');
+  }
+
   // No daemon running — start one in-process and bridge locally
   const { components } = await ensureDaemon();
-  const session = components.sessionRegistry.create(shell, ['-c', commandStr], { cols, rows });
-  const exitCode = await bridgeLocalTerminal(session);
-  await stopDaemon(components);
-  process.exit(exitCode);
+  try {
+    const session = components.sessionRegistry.create(shell, ['-c', commandStr], { cols, rows });
+    const exitCode = await bridgeLocalTerminal(session);
+    await stopDaemon(components);
+    process.exit(exitCode);
+  } catch (err) {
+    if (debug) console.error(chalk.gray('[debug] spawn error: ') + err.stack);
+    else console.error(chalk.red('✗') + ` Failed to create session: ${err.message}`);
+    await stopDaemon(components);
+    process.exit(1);
+  }
 });
 
 program.parseAsync(process.argv).catch((err) => {

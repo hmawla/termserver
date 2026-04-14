@@ -170,7 +170,18 @@ export async function startDaemon(options = {}) {
       const session = sessionRegistry.create(command, args, { cols, rows });
       res.json({ sessionId: session.id });
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({
+        error: err.message,
+        stack: err.stack,
+        debug: {
+          platform: os.platform(),
+          arch: os.arch(),
+          nodeVersion: process.version,
+          shellEnv: process.env.SHELL,
+          homedir: os.homedir(),
+          cwd: process.cwd(),
+        },
+      });
     }
   });
 

@@ -109,8 +109,12 @@ export class Session {
         env: process.env,
       });
     } catch (err) {
+      const cmdExists = fs.existsSync(command);
+      const cwdExists = fs.existsSync(cwd);
       throw new Error(
-        `Failed to spawn PTY (shell: ${command}, cwd: ${cwd}): ${err.message}`
+        `Failed to spawn PTY` +
+        ` (shell: ${command} [exists: ${cmdExists}],` +
+        ` cwd: ${cwd} [exists: ${cwdExists}]): ${err.message}`
       );
     }
 
