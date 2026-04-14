@@ -22,26 +22,12 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     super.dispose();
   }
 
-  Future<void> _onDetect(BarcodeCapture capture) async {
-    if (_processing) return;
-    final raw = capture.barcodes.firstOrNull?.rawValue;
-    if (raw == null) return;
-
-    final uri = Uri.tryParse(raw);
-    if (uri == null || uri.scheme != 'termserver' || uri.host != 'pair') return;
-
-    final ip = uri.queryParameters['ip'];
-    final portStr = uri.queryParameters['port'];
-    final code = uri.queryParameters['code'];
-    final token = uri.queryParameters['token'];
-
-    if (ip == null || portStr == null || code == null || token == null) return;
-    final port = int.tryParse(portStr);
-    if (port == null) return;
-
-    _processing = true;
-    await _controller.stop();
-
+  Future<void> _promptNameAndPair(
+    String ip,
+    int port,
+    String code,
+    String token,
+  ) async {
     if (!mounted) return;
 
     final nameController = TextEditingController();
@@ -73,8 +59,9 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       ),
     );
 
-    // Let the dialog's exit animation complete before any navigation.
-    await Future<void>.delayed(Duration.zero);
+    // Wait for the dialog exit animation to fully complete (~300ms) before
+    // touching the route stack. A single-frame delay is not sufficient.
+    await Future<void>.delayed(const Duration(milliseconds: 300));
     nameController.dispose();
 
     if (!mounted) return;
@@ -111,6 +98,35 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
       setState(() => _processing = false);
       await _controller.start();
     }
+  }
+
+  void _onDetect(BarcodeCapture capture) {
+    if (_processing) return;
+    final raw = capture.barcodes.firstOrNull?.rawValue;
+    if (raw == null) return;
+
+    final uri = Uri.tryParse(raw);
+    if (uri == null || uri.scheme != 'termserver' || uri.host != 'pair') return;
+
+    final ip = uri.queryParameters['ip'];
+    final portStr = uri.queryParameters['port'];
+    final code = uri.queryParameters['code'];
+    final token = uri.queryParameters['token'];
+
+    if (ip == null || portStr == null || code == null || token == null) return;
+    final port = int.tryParse(portStr);
+    if (port == null) return;
+
+    // Lock immediately so rapid-fire detects are ignored.
+    _processing = true;
+    // Stop scanning without awaiting — avoids async work inside the detect
+    // callback which can race with MobileScanner's own Overlay updates.
+    _controller.stop();
+    // Defer the dialog to the next frame so the scanner has finished its
+    // current frame and the Overlay is in a stable state.
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _promptNameAndPair(ip, port, code, token),
+    );
   }
 
   @override
