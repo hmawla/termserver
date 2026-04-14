@@ -16,14 +16,16 @@ export class PairingManager {
   #onPairingCallbacks = [];
   #onInitiatedCallbacks = [];
   #adminToken = null;
+  #ttlMs;
 
-  constructor(store) {
+  constructor(store, { ttlMs = PAIRING_TTL_MS } = {}) {
     this.#store = store;
+    this.#ttlMs = ttlMs;
 
     this.#cleanupInterval = setInterval(() => {
       const now = Date.now();
       for (const [code, entry] of this.#pending) {
-        if (now - entry.createdAt > PAIRING_TTL_MS) {
+        if (now - entry.createdAt > this.#ttlMs) {
           this.#pending.delete(code);
         }
       }
@@ -83,7 +85,7 @@ export class PairingManager {
       throw new Error('Session token mismatch');
     }
 
-    if (Date.now() - entry.createdAt > PAIRING_TTL_MS) {
+    if (Date.now() - entry.createdAt > this.#ttlMs) {
       this.#pending.delete(code);
       throw new Error('Pairing code has expired');
     }

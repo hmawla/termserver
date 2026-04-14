@@ -1,0 +1,90 @@
+name: Flutter Android Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'termserver_app/**'
+  workflow_dispatch:
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      should_build: ${{ steps.check.outputs.should_build }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Extract pubspec version
+        id: version
+        run: |
+          VERSION=$(grep '^version:' termserver_app/pubspec.yaml | sed 's/version: *//')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Detected version: $VERSION"
+
+      - name: Check if this version was already built
+        id: check
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if git tag -l "android-v${VERSION}" | grep -q .; then
+            echo "should_build=false" >> $GITHUB_OUTPUT
+            echo "Version ${VERSION} already built — skipping."
+          else
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "New version ${VERSION} — will build."
+          fi
+
+  build:
+    needs: check-version
+    if: needs.check-version.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.x'
+          channel: 'stable'
+          cache: true
+
+      - name: Get Flutter dependencies
+        working-directory: termserver_app
+        run: flutter pub get
+
+      - name: Build release APK
+        working-directory: termserver_app
+        run: flutter build apk --release
+
+      - name: Rename APK with version
+        run: |
+          VERSION="${{ needs.check-version.outputs.version }}"
+          mv termserver_app/build/app/outputs/flutter-apk/app-release.apk \
+             termserver_app/build/app/outputs/flutter-apk/termserver-android-v${VERSION}.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: termserver-android-v${{ needs.check-version.outputs.version }}
+          path: termserver_app/build/app/outputs/flutter-apk/termserver-android-v${{ needs.check-version.outputs.version }}.apk
+          retention-days: 90
+
+      - name: Tag built version
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "android-v${{ needs.check-version.outputs.version }}"
+          git push origin "android-v${{ needs.check-version.outputs.version }}"

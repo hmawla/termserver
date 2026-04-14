@@ -1,8 +1,11 @@
 # termserver
 
+[![Node.js Tests](https://github.com/hmawla/termserver/actions/workflows/node-tests.yml/badge.svg)](https://github.com/hmawla/termserver/actions/workflows/node-tests.yml)
+[![Android Build](https://github.com/hmawla/termserver/actions/workflows/flutter-android.yml/badge.svg)](https://github.com/hmawla/termserver/actions/workflows/flutter-android.yml)
+
 Share your terminal sessions with mobile devices over your local network.
 
-Run `htop`, `npm run dev`, `copilot .`, or any command on your machine — then view and optionally control it from your phone, hands-free.
+Run `htop`, `npm run dev`, `copilot .`, or any command on your machine, then view and optionally control it from your phone, hands-free.
 
 ## Requirements
 
@@ -13,7 +16,7 @@ Run `htop`, `npm run dev`, `copilot .`, or any command on your machine — then 
 ## Installation
 
 ```bash
-npm install -g termserver
+npm install -g @hmawla/termserver
 ```
 
 > `node-pty` requires native compilation. Make sure you have a C++ build toolchain:
@@ -158,7 +161,12 @@ The companion Flutter app lives in [`termserver_app/`](./termserver_app/). It ha
 - **Multi-device** — save and switch between multiple paired machines
 - **Rename / unpair** from the app
 
-Build & run:
+### Download APK
+
+Pre-built Android APKs are uploaded as [GitHub Actions artifacts](https://github.com/hmawla/termserver/actions/workflows/flutter-android.yml) on every version bump. Open the latest successful **Flutter Android Build** run and download the artifact named `termserver-android-v<version>`.
+
+### Build from source
+
 ```bash
 cd termserver_app
 flutter pub get

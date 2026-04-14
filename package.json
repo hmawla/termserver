@@ -1,9 +1,20 @@
 {
-  "name": "termserver",
+  "name": "@hmawla/termserver",
   "version": "1.0.0",
   "description": "Share your terminal sessions with mobile devices over your local network",
   "type": "module",
   "license": "MIT",
+  "author": {
+    "name": "Hussein Al Mawla",
+    "email": "hussein@kockatoos.co"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hmawla/termserver.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hmawla/termserver/issues"
+  },
   "keywords": [
     "terminal",
     "pty",
@@ -28,7 +39,8 @@
     "termserver": "./bin/termserver.js"
   },
   "scripts": {
-    "start": "node bin/termserver.js"
+    "start": "node bin/termserver.js",
+    "test": "node --test test/pairing.test.js test/session.test.js test/store.test.js"
   },
   "dependencies": {
     "node-pty": "^1.0.0",

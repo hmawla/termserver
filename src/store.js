@@ -20,7 +20,11 @@ const schema = {
   },
 };
 
-const config = new Conf({ projectName: 'termserver', schema });
+const config = new Conf({
+  projectName: 'termserver',
+  schema,
+  ...(process.env.TERMSERVER_CONFIG_DIR && { cwd: process.env.TERMSERVER_CONFIG_DIR }),
+});
 
 export function getConfig() {
   return config;
