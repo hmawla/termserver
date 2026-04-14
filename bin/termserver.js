@@ -2,6 +2,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import qrcode from 'qrcode-terminal';
+import { createRequire } from 'node:module';
 
 import { startDaemon, stopDaemon, isDaemonRunning } from '../src/daemon.js';
 import { getDefaultShell } from '../src/session.js';
@@ -9,12 +10,14 @@ import { bridgeLocalTerminal, bridgeRemoteSession } from '../src/ptyBridge.js';
 import { getDevices, removeDevice } from '../src/store.js';
 import { getLanIp } from '../src/network.js';
 
+const { version } = createRequire(import.meta.url)('../package.json');
+
 const program = new Command();
 
 program
   .name('termserver')
   .description('Cross-platform terminal sharing daemon')
-  .version('1.0.0');
+  .version(version);
 
 // ---------------------------------------------------------------------------
 // Helper: ensure daemon is running in-process
