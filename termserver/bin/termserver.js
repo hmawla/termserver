@@ -70,9 +70,6 @@ program
       resolve();
     }));
 
-    console.log('  ' + chalk.dim('Or connect manually: enter the IP/port above, then code:'));
-    console.log('  Pairing Code: ' + chalk.yellow.bold(code));
-    console.log('');
     console.log('  ' + chalk.dim('(Ctrl+C to cancel)'));
     console.log('');
 
