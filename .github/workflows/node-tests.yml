@@ -2,14 +2,14 @@ name: Node.js Tests
 
 on:
   push:
-    branches: [main]
+    branches: [master]
     paths:
       - 'src/**'
       - 'bin/**'
       - 'test/**'
       - 'package*.json'
   pull_request:
-    branches: [main]
+    branches: [master]
 
 jobs:
   test:
