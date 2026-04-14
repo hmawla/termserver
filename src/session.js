@@ -53,17 +53,34 @@ export async function runPtyDiagnostics() {
     const req = createRequire(import.meta.url);
     const pkgJson = req.resolve('node-pty/package.json');
     const ptyRoot = path.dirname(pkgJson);
-    const candidates = [
-      path.join(ptyRoot, 'build', 'Release', 'pty.node'),
-      path.join(ptyRoot, 'prebuilds', `${platform}-${os.arch()}`, 'node.napi.node'),
-      path.join(ptyRoot, 'prebuilds', `${platform}-x64`, 'node.napi.node'),
-    ];
-    result.ptyNodeFile = candidates.find(p => fs.existsSync(p)) ?? '(not found)';
+    result.ptyRoot = ptyRoot;
     result.ptyNodeVersion = (() => {
       try { return req('node-pty/package.json').version; } catch { return '?'; }
     })();
+
+    // Walk the entire node-pty directory tree to find any .node file
+    const findNodeFiles = (dir) => {
+      const results = [];
+      try {
+        for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, item.name);
+          if (item.isDirectory() && !item.name.startsWith('.')) {
+            results.push(...findNodeFiles(full));
+          } else if (item.name.endsWith('.node')) {
+            results.push(full);
+          }
+        }
+      } catch {}
+      return results;
+    };
+    result.ptyNodeFiles = findNodeFiles(ptyRoot);
+    result.ptyNodeFile = result.ptyNodeFiles[0] ?? '(not found)';
+    result.rebuildNeeded = result.ptyNodeFiles.length === 0;
   } catch (e) {
     result.ptyNodeFile = `(resolve error: ${e.message})`;
+    result.ptyRoot = '?';
+    result.ptyNodeFiles = [];
+    result.rebuildNeeded = true;
   }
 
   // --- Minimal PTY spawn test (just /bin/echo) ---

@@ -256,18 +256,31 @@ program.action(async (opts) => {
     console.error(chalk.gray('[debug] running pty diagnostics…'));
     const diag = await runPtyDiagnostics();
     dline('node-pty version:', diag.ptyNodeVersion ?? '?');
-    dline('pty.node path:', diag.ptyNodeFile);
+    dline('node-pty root:', diag.ptyRoot ?? '?');
 
-    // If we can, check architecture of the native module
-    if (os.platform() === 'darwin' && diag.ptyNodeFile && diag.ptyNodeFile !== '(not found)') {
-      try {
-        const lipoOut = execSync(`lipo -archs "${diag.ptyNodeFile}" 2>&1`, { encoding: 'utf8' }).trim();
-        dline('pty.node archs:', lipoOut.includes(os.arch()) ? chalk.green(lipoOut) : chalk.red(`${lipoOut} ← MISMATCH with ${os.arch()}!`));
-      } catch {}
-      try {
-        const fileOut = execSync(`file "${diag.ptyNodeFile}" 2>&1`, { encoding: 'utf8' }).trim().split('\n')[0];
-        dline('pty.node file:', fileOut.replace(diag.ptyNodeFile + ': ', ''));
-      } catch {}
+    if (diag.ptyNodeFiles && diag.ptyNodeFiles.length > 0) {
+      for (const f of diag.ptyNodeFiles) {
+        // Check architecture of each found native binary
+        let archInfo = '';
+        if (os.platform() === 'darwin') {
+          try {
+            const lipo = execSync(`lipo -archs "${f}" 2>&1`, { encoding: 'utf8' }).trim();
+            archInfo = lipo.includes(os.arch())
+              ? chalk.green(` [archs: ${lipo}]`)
+              : chalk.red(` [archs: ${lipo} ← MISMATCH with ${os.arch()}!]`);
+          } catch {}
+        }
+        dline('pty.node found:', f + archInfo);
+      }
+    } else {
+      dline('pty.node found:', chalk.red('NONE — native binary is missing'));
+      console.error('');
+      console.error(chalk.red('  ✗ node-pty native module was not compiled during installation.'));
+      console.error(chalk.yellow('  → Fix: rebuild it for your current Node.js / architecture:'));
+      console.error(chalk.cyan('      npm rebuild node-pty --prefix "$(npm root -g)/../.."'));
+      console.error(chalk.yellow('  → Or reinstall from source:'));
+      console.error(chalk.cyan('      npm install -g @hmawla/termserver --build-from-source'));
+      console.error('');
     }
 
     dline('test pty spawn:', diag.testSpawn === 'OK' ? chalk.green('OK') : chalk.red(diag.testSpawn));
