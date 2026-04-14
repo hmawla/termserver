@@ -29,9 +29,39 @@ export function getDefaultShell() {
 }
 
 /**
- * Runs PTY sub-system diagnostics and returns a structured result object.
- * Used by --debug to surface actionable info before / after a spawn failure.
+ * Quick sanity check: tries to spawn /bin/echo via node-pty.
+ * Returns null on success, or an Error with an actionable message on failure.
  */
+export async function checkPtyHealth() {
+  if (os.platform() === 'win32') return null;
+  try {
+    const proc = pty.spawn('/bin/echo', ['ok'], {
+      name: 'xterm',
+      cols: 80,
+      rows: 24,
+      cwd: os.tmpdir(),
+      env: { TERM: 'xterm', PATH: process.env.PATH || '/usr/bin:/bin', HOME: os.homedir() },
+    });
+    await new Promise((resolve) => {
+      proc.onExit(() => resolve());
+      setTimeout(() => { try { proc.kill(); } catch {} resolve(); }, 3000);
+    });
+    return null;
+  } catch (err) {
+    const msg = err.message ?? '';
+    if (msg.includes('posix_spawnp')) {
+      return new Error(
+        'node-pty PTY spawn failed — the native binary may need to be rebuilt.\n\n' +
+        '  Run this command, then try again:\n\n' +
+        '    npm rebuild node-pty --prefix "$(npm root -g)/../.."\n\n' +
+        '  If that fails, install Xcode Command Line Tools first:\n' +
+        '    xcode-select --install\n'
+      );
+    }
+    return new Error(`PTY health check failed: ${msg}`);
+  }
+}
+
 export async function runPtyDiagnostics() {
   const result = {};
   const platform = os.platform();

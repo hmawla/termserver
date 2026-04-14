@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { startDaemon, stopDaemon, isDaemonRunning } from '../src/daemon.js';
-import { getDefaultShell, runPtyDiagnostics } from '../src/session.js';
+import { getDefaultShell, runPtyDiagnostics, checkPtyHealth } from '../src/session.js';
 import { bridgeLocalTerminal, bridgeRemoteSession } from '../src/ptyBridge.js';
 import { getDevices, removeDevice } from '../src/store.js';
 import { getLanIp } from '../src/network.js';
@@ -286,6 +286,15 @@ program.action(async (opts) => {
     dline('test pty spawn:', diag.testSpawn === 'OK' ? chalk.green('OK') : chalk.red(diag.testSpawn));
     if (diag.ptyDeviceError) dline('pty device error:', chalk.red(diag.ptyDeviceError));
     console.error('');
+  }
+
+  // Quick PTY health check — catches broken native binaries before we try
+  // to start a daemon or create a session.
+  const ptyErr = await checkPtyHealth();
+  if (ptyErr) {
+    console.error(chalk.red('✗ PTY subsystem error\n'));
+    console.error(ptyErr.message);
+    process.exit(1);
   }
 
   // If a daemon is already running in another process, attach to it via HTTP+WS
