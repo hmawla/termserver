@@ -56,7 +56,13 @@ class TerminalProvider extends ChangeNotifier {
     });
 
     _terminal!.onOutput = (data) {
-      sendInput(data);
+      // xterm 4.x on iOS sends \n (LF) for the Enter key via the software
+      // keyboard (TextInputAction.newline inserts text instead of calling
+      // performAction). PTY line discipline expects \r (CR) for Enter, so
+      // we remap bare \n → \r here for all input (correct for both
+      // individual keypresses and pasted multi-line content).
+      final fixed = data.replaceAll('\n', '\r');
+      sendInput(fixed);
     };
 
     _wsService!.connectToSession(

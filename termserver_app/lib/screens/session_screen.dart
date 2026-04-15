@@ -102,7 +102,10 @@ class _SessionScreenState extends State<SessionScreen> {
                               constraints.maxWidth,
                               constraints.maxHeight,
                             );
-                            return TerminalView(provider.terminal!);
+                            return TerminalView(
+                              provider.terminal!,
+                              deleteDetection: true,
+                            );
                           },
                         ),
                 ),
