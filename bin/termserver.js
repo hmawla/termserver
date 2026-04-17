@@ -320,7 +320,7 @@ program.action(async (opts) => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${daemonStatus.adminToken}`,
         },
-        body: JSON.stringify({ command: shell, args: ['-c', commandStr], cols, rows }),
+        body: JSON.stringify({ command: shell, args: ['-c', commandStr], cols, rows, cwd: process.cwd() }),
       });
       if (!resp.ok) {
         const body = await resp.json().catch(() => null);
@@ -357,7 +357,7 @@ program.action(async (opts) => {
   // No daemon running — start one in-process and bridge locally
   const { components } = await ensureDaemon();
   try {
-    const session = components.sessionRegistry.create(shell, ['-c', commandStr], { cols, rows });
+    const session = components.sessionRegistry.create(shell, ['-c', commandStr], { cols, rows, cwd: process.cwd() });
     const exitCode = await bridgeLocalTerminal(session);
     await stopDaemon(components);
     process.exit(exitCode);

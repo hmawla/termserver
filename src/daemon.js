@@ -163,11 +163,11 @@ export async function startDaemon(options = {}) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     try {
-      const { command, args = [], cols = 80, rows = 24 } = req.body || {};
+      const { command, args = [], cols = 80, rows = 24, cwd } = req.body || {};
       if (!command) {
         return res.status(400).json({ error: 'command is required' });
       }
-      const session = sessionRegistry.create(command, args, { cols, rows });
+      const session = sessionRegistry.create(command, args, { cols, rows, cwd });
       res.json({ sessionId: session.id });
     } catch (err) {
       res.status(500).json({
